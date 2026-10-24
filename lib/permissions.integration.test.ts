@@ -1,0 +1,13 @@
+import { beforeAll, afterAll, describe, expect, it } from 'vitest';
+import { db } from './db';
+import { projectForUser, taskForUser, changeTaskStatus } from './permissions';
+const enabled=!!process.env.TEST_DATABASE_URL;
+describe.skipIf(!enabled)('tenant isolation and concurrency',()=>{
+ let owner:string,outsider:string,projectManager:string,project:string,otherProject:string,task:string,workspace:string;
+ beforeAll(async()=>{process.env.DATABASE_URL=process.env.TEST_DATABASE_URL;const stamp=crypto.randomUUID();const a=await db.user.create({data:{name:'Owner',email:`owner-${stamp}@example.test`,emailVerifiedAt:new Date()}});const b=await db.user.create({data:{name:'Outsider',email:`outsider-${stamp}@example.test`,emailVerifiedAt:new Date()}});const c=await db.user.create({data:{name:'Project manager',email:`manager-${stamp}@example.test`,emailVerifiedAt:new Date()}});owner=a.id;outsider=b.id;projectManager=c.id;const w=await db.workspace.create({data:{name:'Tenant test',memberships:{create:[{userId:owner,role:'OWNER'},{userId:projectManager,role:'MEMBER'}]},projects:{create:[{name:'Project',tasks:{create:{title:'Work'}},members:{create:{userId:projectManager,role:'MANAGER'}}},{name:'Other project'}]}},include:{projects:{include:{tasks:true}}}});workspace=w.id;project=w.projects.find(p=>p.name==='Project')!.id;otherProject=w.projects.find(p=>p.name==='Other project')!.id;task=w.projects.find(p=>p.name==='Project')!.tasks[0].id});
+ afterAll(async()=>{if(workspace)await db.workspace.delete({where:{id:workspace}});if(owner)await db.user.deleteMany({where:{id:{in:[owner,outsider,projectManager]}}})});
+ it('does not expose another workspace project or task',async()=>{expect(await projectForUser(outsider,project)).toBeNull();expect(await taskForUser(outsider,task)).toBeNull();expect(await projectForUser(owner,project)).not.toBeNull()});
+ it('rejects a guest edit',async()=>{await db.membership.create({data:{userId:outsider,workspaceId:workspace,role:'GUEST'}});expect((await changeTaskStatus(outsider,task,0,'DONE')).kind).toBe('forbidden')});
+ it('grants project management only on the assigned project',async()=>{expect(await projectForUser(projectManager,project,['OWNER','ADMIN','MANAGER'])).not.toBeNull();expect(await projectForUser(projectManager,otherProject,['OWNER','ADMIN','MANAGER'])).toBeNull();expect(await taskForUser(projectManager,task,['OWNER','ADMIN','MANAGER'])).not.toBeNull()});
+ it('allows only one concurrent versioned update',async()=>{const results=await Promise.all([changeTaskStatus(owner,task,0,'DONE'),changeTaskStatus(owner,task,0,'IN_PROGRESS')]);expect(results.map(r=>r.kind).sort()).toEqual(['conflict','updated']);expect((await db.task.findUniqueOrThrow({where:{id:task}})).version).toBe(1)});
+});

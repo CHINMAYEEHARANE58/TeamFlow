@@ -1,0 +1,337 @@
+generator client {
+  provider = "prisma-client"
+  output = "../generated/prisma"
+}
+datasource db {
+  provider = "postgresql"
+}
+enum Role {
+  OWNER
+  ADMIN
+  MANAGER
+  MEMBER
+  GUEST
+}
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  IN_REVIEW
+  DONE
+}
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+enum SprintState {
+  PLANNED
+  ACTIVE
+  COMPLETED
+}
+enum TokenPurpose {
+  VERIFY_EMAIL
+  RESET_PASSWORD
+  INVITATION
+}
+enum NotificationType {
+  TASK_ASSIGNED
+  TASK_UPDATED
+  COMMENT
+  MENTION
+  INVITATION
+  SPRINT
+}
+model User {
+  id String @id @default(cuid())
+  name String
+  email String @unique
+  passwordHash String?
+  emailVerifiedAt DateTime?
+  isPlatformAdmin Boolean @default(false)
+  createdAt DateTime @default(now())
+  memberships Membership[]
+  sessions Session[]
+  tokens AuthToken[]
+  assignedTasks Task[] @relation("Assignee")
+  comments TaskComment[]
+  notifications Notification[]
+  preferences NotificationPreference?
+  activity ActivityLog[]
+  audit AuditLog[]
+  uploadedAttachments Attachment[]
+  oauthAccounts OAuthAccount[]
+  projectMemberships ProjectMember[]
+}
+model OAuthAccount {
+  id String @id @default(cuid())
+  userId String
+  provider String
+  providerAccountId String
+  user User @relation(fields:[userId],references:[id],onDelete:Cascade)
+  @@unique([provider,providerAccountId])
+}
+model Session {
+  id String @id @default(cuid())
+  tokenHash String @unique
+  userId String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  user User @relation(fields:[userId],references:[id],onDelete:Cascade)
+  @@index([userId])
+}
+model AuthToken {
+  id String @id @default(cuid())
+  tokenHash String @unique
+  purpose TokenPurpose
+  userId String
+  expiresAt DateTime
+  usedAt DateTime?
+  user User @relation(fields:[userId],references:[id],onDelete:Cascade)
+  @@index([userId,purpose])
+}
+model Workspace {
+  id String @id @default(cuid())
+  name String
+  createdAt DateTime @default(now())
+  memberships Membership[]
+  invitations Invitation[]
+  projects Project[]
+  labels Label[]
+  notifications Notification[]
+  activity ActivityLog[]
+  audit AuditLog[]
+  events WorkspaceEvent[]
+}
+model Membership {
+  id String @id @default(cuid())
+  userId String
+  workspaceId String
+  role Role @default(MEMBER)
+  user User @relation(fields:[userId],references:[id],onDelete:Cascade)
+  workspace Workspace @relation(fields:[workspaceId],references:[id],onDelete:Cascade)
+  @@unique([userId,workspaceId])
+  @@index([workspaceId,role])
+}
+model Invitation {
+  id String @id @default(cuid())
+  workspaceId String
+  email String
+  role Role @default(MEMBER)
+  tokenHash String @unique
+  invitedById String
+  expiresAt DateTime
+  acceptedAt DateTime?
+  createdAt DateTime @default(now())
+  workspace Workspace @relation(fields:[workspaceId],references:[id],onDelete:Cascade)
+  @@index([workspaceId,email])
+}
+model Project {
+  id String @id @default(cuid())
+  name String
+  description String @default("")
+  color String @default("#6658dd")
+  archived Boolean @default(false)
+  workspaceId String
+  workspace Workspace @relation(fields:[workspaceId],references:[id],onDelete:Cascade)
+  members ProjectMember[]
+  statuses ProjectStatus[]
+  tasks Task[]
+  sprints Sprint[]
+  createdAt DateTime @default(now())
+  @@index([workspaceId,archived])
+}
+model ProjectMember {
+  id String @id @default(cuid())
+  projectId String
+  userId String
+  role Role @default(MEMBER)
+  project Project @relation(fields:[projectId],references:[id],onDelete:Cascade)
+  user User @relation(fields:[userId],references:[id],onDelete:Cascade)
+  @@unique([projectId,userId])
+}
+model ProjectStatus {
+  id String @id @default(cuid())
+  projectId String
+  name String
+  color String @default("#64748b")
+  position Int
+  isDone Boolean @default(false)
+  project Project @relation(fields:[projectId],references:[id],onDelete:Cascade)
+  tasks Task[]
+  @@unique([projectId,name])
+  @@unique([projectId,position])
+}
+model Task {
+  id String @id @default(cuid())
+  title String
+  description String @default("")
+  status TaskStatus @default(TODO)
+  customStatusId String?
+  priority Priority @default(MEDIUM)
+  dueDate DateTime?
+  projectId String
+  assigneeId String?
+  parentId String?
+  sprintId String?
+  storyPoints Int?
+  position Int @default(0)
+  version Int @default(0)
+  project Project @relation(fields:[projectId],references:[id],onDelete:Cascade)
+  assignee User? @relation("Assignee",fields:[assigneeId],references:[id],onDelete:SetNull)
+  parent Task? @relation("Subtasks",fields:[parentId],references:[id],onDelete:SetNull)
+  subtasks Task[] @relation("Subtasks")
+  sprint Sprint? @relation(fields:[sprintId],references:[id],onDelete:SetNull)
+  customStatus ProjectStatus? @relation(fields:[customStatusId],references:[id],onDelete:SetNull)
+  labels TaskLabel[]
+  comments TaskComment[]
+  attachments Attachment[]
+  dependsOn TaskDependency[] @relation("Dependent")
+  blocks TaskDependency[] @relation("Prerequisite")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@index([projectId,status,position])
+  @@index([assigneeId,status])
+  @@index([sprintId])
+  @@index([dueDate])
+}
+model TaskComment {
+  id String @id @default(cuid())
+  taskId String
+  authorId String
+  body String @db.Text
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  task Task @relation(fields:[taskId],references:[id],onDelete:Cascade)
+  author User @relation(fields:[authorId],references:[id],onDelete:Cascade)
+  @@index([taskId,createdAt])
+}
+model Attachment {
+  id String @id @default(cuid())
+  taskId String
+  uploadedById String
+  objectKey String @unique
+  name String
+  mimeType String
+  size Int
+  createdAt DateTime @default(now())
+  task Task @relation(fields:[taskId],references:[id],onDelete:Cascade)
+  uploader User @relation(fields:[uploadedById],references:[id],onDelete:Cascade)
+  @@index([taskId])
+}
+model Label {
+  id String @id @default(cuid())
+  workspaceId String
+  name String
+  color String @default("#6366f1")
+  workspace Workspace @relation(fields:[workspaceId],references:[id],onDelete:Cascade)
+  tasks TaskLabel[]
+  @@unique([workspaceId,name])
+}
+model TaskLabel {
+  taskId String
+  labelId String
+  task Task @relation(fields:[taskId],references:[id],onDelete:Cascade)
+  label Label @relation(fields:[labelId],references:[id],onDelete:Cascade)
+  @@id([taskId,labelId])
+}
+model Sprint {
+  id String @id @default(cuid())
+  projectId String
+  name String
+  goal String @default("")
+  state SprintState @default(PLANNED)
+  startDate DateTime?
+  endDate DateTime?
+  completedAt DateTime?
+  project Project @relation(fields:[projectId],references:[id],onDelete:Cascade)
+  tasks Task[]
+  report SprintReport?
+  @@index([projectId,state])
+}
+model TaskDependency {
+  taskId String
+  dependsOnId String
+  task Task @relation("Dependent",fields:[taskId],references:[id],onDelete:Cascade)
+  prerequisite Task @relation("Prerequisite",fields:[dependsOnId],references:[id],onDelete:Cascade)
+  @@id([taskId,dependsOnId])
+}
+model Notification {
+  id String @id @default(cuid())
+  userId String
+  workspaceId String
+  type NotificationType
+  title String
+  body String
+  href String?
+  readAt DateTime?
+  createdAt DateTime @default(now())
+  user User @relation(fields:[userId],references:[id],onDelete:Cascade)
+  workspace Workspace @relation(fields:[workspaceId],references:[id],onDelete:Cascade)
+  @@index([userId,readAt,createdAt])
+}
+model NotificationPreference {
+  userId String @id
+  inAppEnabled Boolean @default(true)
+  emailEnabled Boolean @default(true)
+  user User @relation(fields:[userId],references:[id],onDelete:Cascade)
+}
+model ActivityLog {
+  id String @id @default(cuid())
+  workspaceId String
+  actorId String
+  entityType String
+  entityId String
+  action String
+  details Json?
+  createdAt DateTime @default(now())
+  workspace Workspace @relation(fields:[workspaceId],references:[id],onDelete:Cascade)
+  actor User @relation(fields:[actorId],references:[id],onDelete:Cascade)
+  @@index([workspaceId,createdAt])
+}
+model AuditLog {
+  id String @id @default(cuid())
+  workspaceId String
+  actorId String
+  action String
+  targetType String
+  targetId String
+  details Json?
+  createdAt DateTime @default(now())
+  workspace Workspace @relation(fields:[workspaceId],references:[id],onDelete:Cascade)
+  actor User @relation(fields:[actorId],references:[id],onDelete:Cascade)
+  @@index([workspaceId,createdAt])
+}
+model WorkspaceEvent {
+  id String @id @default(cuid())
+  workspaceId String
+  type String
+  entityId String
+  payload Json
+  createdAt DateTime @default(now())
+  workspace Workspace @relation(fields:[workspaceId],references:[id],onDelete:Cascade)
+  @@index([workspaceId,createdAt,id])
+}
+model EmailJob {
+  id String @id @default(cuid())
+  to String
+  subject String
+  body String @db.Text
+  attempts Int @default(0)
+  availableAt DateTime @default(now())
+  lockUntil DateTime?
+  deliveredAt DateTime?
+  lastError String?
+  createdAt DateTime @default(now())
+  @@index([deliveredAt,availableAt,lockUntil])
+}
+model SprintReport {
+  id String @id @default(cuid())
+  sprintId String @unique
+  sprint Sprint @relation(fields:[sprintId],references:[id],onDelete:Cascade)
+  totalPoints Int
+  completedPoints Int
+  completedTasks Int
+  totalTasks Int
+  createdAt DateTime @default(now())
+}

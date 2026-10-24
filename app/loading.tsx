@@ -1,0 +1,1 @@
+export default function Loading(){return <div className="loading-screen" role="status" aria-label="Loading workspace"><div className="loading-sidebar"/><main><div className="loading-bar"/><div className="loading-bar short"/><div className="loading-cards"><div/><div/><div/><div/></div><div className="loading-table"/></main></div>}

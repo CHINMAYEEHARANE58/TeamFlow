@@ -1,0 +1,3 @@
+import Link from 'next/link';
+import { verifyEmail } from '../actions';
+export default async function Verify({searchParams}:{searchParams:Promise<{token?:string}>}){const {token}=await searchParams;return <main className="auth"><div className="auth-card"><div className="brand-mark">✳</div><p className="eyebrow">EMAIL VERIFICATION</p><h1>One more step.</h1>{token?<><p>Confirm your email to activate your account.</p><form action={verifyEmail}><input type="hidden" name="token" value={token}/><button className="primary">Verify email</button></form></>:<p>This verification link is invalid. <Link href="/login">Return to sign in</Link>.</p>}</div></main>}

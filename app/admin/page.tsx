@@ -1,0 +1,6 @@
+import Link from 'next/link';
+import { notFound } from 'next/navigation';
+import { requireUser } from '@/lib/access';
+import { db } from '@/lib/db';
+export const dynamic='force-dynamic';
+export default async function Admin(){const user=await requireUser();if(!user.isPlatformAdmin)notFound();const [users,workspaces,audit]=await Promise.all([db.user.count(),db.workspace.findMany({include:{_count:{select:{memberships:true,projects:true}}},orderBy:{createdAt:'desc'},take:50}),db.auditLog.findMany({orderBy:{createdAt:'desc'},take:50,include:{actor:true,workspace:true}})]);return <main className="subpage"><Link href="/">← Dashboard</Link><p className="eyebrow">PLATFORM ADMINISTRATION</p><h1>TeamFlow operations</h1><p>{users} users · {workspaces.length} recent workspaces</p><div className="subgrid"><section className="panel"><h2>Workspaces</h2>{workspaces.map(w=><div className="setting-row" key={w.id}><strong>{w.name}</strong><span>{w._count.memberships} members · {w._count.projects} projects</span></div>)}</section><section className="panel"><h2>Administrative audit</h2>{audit.map(a=><div className="setting-row" key={a.id}><strong>{a.action}</strong><span>{a.actor.name} · {a.workspace.name}</span></div>)}</section></div></main>}

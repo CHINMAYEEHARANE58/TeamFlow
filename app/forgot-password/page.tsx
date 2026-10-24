@@ -1,0 +1,3 @@
+import Link from 'next/link';
+import { requestPasswordReset } from '../actions';
+export default async function Forgot({searchParams}:{searchParams:Promise<{sent?:string}>}){const {sent}=await searchParams;return <main className="auth"><div className="auth-card"><div className="brand-mark">✳</div><p className="eyebrow">ACCOUNT RECOVERY</p><h1>Reset your password.</h1><p>{sent?'If the account exists, a reset link has been sent.':'Enter your email and we will send a reset link.'}</p><form action={requestPasswordReset}><label>Email address<input name="email" type="email" required/></label><button className="primary">Send reset link</button></form><p className="auth-foot"><Link href="/login">Back to sign in</Link></p></div></main>}
