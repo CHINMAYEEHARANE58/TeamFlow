@@ -1,6 +1,40 @@
 import Link from 'next/link';
 import { requireWorkspace } from '@/lib/access';
 import { db } from '@/lib/db';
-import { changeMemberRole, createLabel, createWorkspace, inviteMember, switchWorkspace, updateNotificationPreferences, updateWorkspace } from '../actions';
-export const dynamic='force-dynamic';
-export default async function Settings(){const {user,membership,workspace}=await requireWorkspace();const all=await db.membership.findMany({where:{userId:user.id},include:{workspace:true}});const members=await db.membership.findMany({where:{workspaceId:workspace.id},include:{user:true},orderBy:{id:'asc'}});const isAdmin=['OWNER','ADMIN'].includes(membership.role);const canManage=['OWNER','ADMIN','MANAGER'].includes(membership.role);const prefs=await db.notificationPreference.findUnique({where:{userId:user.id}});return <main className="subpage"><Link href="/">← Dashboard</Link><p className="eyebrow">WORKSPACE</p><h1>Settings</h1><p>Manage your organizations and team.</p><div className="subgrid"><section className="panel"><h2>Your workspaces</h2>{all.map(m=><form key={m.id} action={switchWorkspace} className="setting-row"><strong>{m.workspace.name}</strong><span>{m.role.toLowerCase()}</span><input type="hidden" name="workspaceId" value={m.workspaceId}/><button className="outline-button">Open</button></form>)}<form action={createWorkspace} className="stack-form"><label>New workspace<input name="name" required maxLength={100} placeholder="Workspace name"/></label><button className="primary">Create workspace</button></form></section><section className="panel"><h2>Members · {workspace.name}</h2>{members.map(m=><div className="setting-row" key={m.id}><strong>{m.user.name}</strong><span>{m.user.email}</span>{isAdmin&&m.role!=='OWNER'?<form action={changeMemberRole}><input type="hidden" name="userId" value={m.userId}/><select name="role" defaultValue={m.role} aria-label={`Role for ${m.user.name}`}><option>ADMIN</option><option>MANAGER</option><option>MEMBER</option><option>GUEST</option></select><button className="outline-button">Save</button></form>:<span>{m.role}</span>}</div>)}{isAdmin&&<form action={inviteMember} className="stack-form"><h3>Invite a teammate</h3><label>Email<input type="email" name="email" required/></label><label>Role<select name="role"><option value="MEMBER">Member</option><option value="MANAGER">Manager</option><option value="GUEST">Guest</option><option value="ADMIN">Admin</option></select></label><button className="primary">Send invitation</button></form>}</section></div>{isAdmin&&<section className="panel calendar-day"><h2>Workspace details</h2><form action={updateWorkspace} className="inline-form"><label>Name <input name="name" defaultValue={workspace.name} required maxLength={100}/></label><button className="primary">Save workspace</button></form></section>}{canManage&&<section className="panel calendar-day"><h2>Labels</h2><form action={createLabel} className="inline-form"><input name="name" placeholder="New label" required maxLength={40}/><input name="color" type="color" defaultValue="#6366f1"/><button className="primary">Add label</button></form></section>}<section className="panel calendar-day"><h2>Notification preferences</h2><form action={updateNotificationPreferences} className="stack-form"><label><input type="checkbox" name="inAppEnabled" defaultChecked={prefs?.inAppEnabled??true}/> In-app notifications</label><label><input type="checkbox" name="emailEnabled" defaultChecked={prefs?.emailEnabled??true}/> Email notifications</label><button className="primary">Save preferences</button></form></section></main>}
+import { changeMemberRole, createLabel, createWorkspace, inviteMember, removeMember, switchWorkspace, updateNotificationPreferences, updateWorkspace } from '../actions';
+
+export const dynamic = 'force-dynamic';
+
+export default async function Settings() {
+ const { user, membership, workspace } = await requireWorkspace();
+ const [all, members, prefs] = await Promise.all([
+  db.membership.findMany({ where: { userId: user.id }, include: { workspace: true } }),
+  db.membership.findMany({ where: { workspaceId: workspace.id }, include: { user: true }, orderBy: { id: 'asc' } }),
+  db.notificationPreference.findUnique({ where: { userId: user.id } }),
+ ]);
+ const isAdmin = ['OWNER', 'ADMIN'].includes(membership.role);
+ const canManage = ['OWNER', 'ADMIN', 'MANAGER'].includes(membership.role);
+ return <main className="subpage">
+  <Link href="/">← Dashboard</Link><p className="eyebrow">WORKSPACE</p><h1>Settings</h1><p>Manage your organizations and team.</p>
+  <div className="subgrid">
+   <section className="panel"><h2>Your workspaces</h2>
+    {all.map(m => <form key={m.id} action={switchWorkspace} className="setting-row"><strong>{m.workspace.name}</strong><span>{m.role.toLowerCase()}</span><input type="hidden" name="workspaceId" value={m.workspaceId}/><button className="outline-button">Open</button></form>)}
+    <form action={createWorkspace} className="stack-form"><label>New workspace<input name="name" required maxLength={100} placeholder="Workspace name"/></label><button className="primary">Create workspace</button></form>
+   </section>
+   <section className="panel"><h2>Members · {workspace.name}</h2>
+    {members.map(m => {
+     const canChange = isAdmin && m.role !== 'OWNER' && (membership.role === 'OWNER' || m.role !== 'ADMIN');
+     const canRemove = canChange && m.userId !== user.id;
+     return <div className="setting-row" key={m.id}><strong>{m.user.name}</strong><span>{m.user.email}</span>
+      {canChange ? <form action={changeMemberRole}><input type="hidden" name="userId" value={m.userId}/><select name="role" defaultValue={m.role} aria-label={`Role for ${m.user.name}`}><option>ADMIN</option><option>MANAGER</option><option>MEMBER</option><option>GUEST</option></select><button className="outline-button">Save</button></form> : <span>{m.role}</span>}
+      {canRemove && <form action={removeMember}><input type="hidden" name="userId" value={m.userId}/><button className="outline-button" aria-label={`Remove ${m.user.name}`}>Remove</button></form>}
+     </div>;
+    })}
+    {isAdmin && <form action={inviteMember} className="stack-form"><h3>Invite a teammate</h3><label>Email<input type="email" name="email" required/></label><label>Role<select name="role"><option value="MEMBER">Member</option><option value="MANAGER">Manager</option><option value="GUEST">Guest</option><option value="ADMIN">Admin</option></select></label><button className="primary">Send invitation</button></form>}
+   </section>
+  </div>
+  {isAdmin && <section className="panel calendar-day"><h2>Workspace details</h2><form action={updateWorkspace} className="inline-form"><label>Name <input name="name" defaultValue={workspace.name} required maxLength={100}/></label><button className="primary">Save workspace</button></form></section>}
+  {canManage && <section className="panel calendar-day"><h2>Labels</h2><form action={createLabel} className="inline-form"><input name="name" placeholder="New label" required maxLength={40} aria-label="New label"/><input name="color" type="color" defaultValue="#6366f1" aria-label="Label color"/><button className="primary">Add label</button></form></section>}
+  <section className="panel calendar-day"><h2>Notification preferences</h2><form action={updateNotificationPreferences} className="stack-form"><label><input type="checkbox" name="inAppEnabled" defaultChecked={prefs?.inAppEnabled??true}/> In-app notifications</label><label><input type="checkbox" name="emailEnabled" defaultChecked={prefs?.emailEnabled??true}/> Email notifications</label><button className="primary">Save preferences</button></form></section>
+ </main>;
+}

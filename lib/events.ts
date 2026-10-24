@@ -6,7 +6,6 @@ export async function recordEvent(tx:Prisma.TransactionClient,workspaceId:string
 }
 export async function notify(userId:string,workspaceId:string,title:string,body:string,href:string){
  const preference=await db.notificationPreference.findUnique({where:{userId}});
- if(preference?.inAppEnabled===false)return;
- await db.notification.create({data:{userId,workspaceId,title,body,href,type:title==='Task assigned'?'TASK_ASSIGNED':'TASK_UPDATED'}});
+ if(preference?.inAppEnabled!==false)await db.notification.create({data:{userId,workspaceId,title,body,href,type:title==='Task assigned'?'TASK_ASSIGNED':'TASK_UPDATED'}});
  if(preference?.emailEnabled!==false){const user=await db.user.findUnique({where:{id:userId},select:{email:true}});if(user)await db.emailJob.create({data:{to:user.email,subject:`TeamFlow: ${title}`,body:`${body}\n\nOpen ${(process.env.APP_URL||'http://localhost:3000')}${href}`}})}
 }

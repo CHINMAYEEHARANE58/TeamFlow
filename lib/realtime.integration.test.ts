@@ -76,4 +76,25 @@ describe.skipIf(!enabled)('Redis WebSocket realtime', () => {
   expect((await next).type).toBe('task.visible');
   socket.close();
  }, 15_000);
+ it('closes a logged-out session before delivering another event', async () => {
+  const socket = await connect(`${Date.now()}:~`);
+  const closed = new Promise<number>((resolve, reject) => {
+   const timer = setTimeout(() => reject(new Error('Logged-out socket stayed open')), 10_000);
+   socket.once('close', code => { clearTimeout(timer); resolve(code) });
+  });
+  await db.session.deleteMany({ where: { userId } });
+  await db.workspaceEvent.create({ data: { workspaceId, type: 'task.updated', entityId: 'after-logout', payload: {} } });
+  expect(await closed).toBe(1008);
+  await db.session.create({ data: { userId, tokenHash: createHash('sha256').update(token).digest('hex'), expiresAt: new Date(Date.now() + 60_000) } });
+ }, 15_000);
+ it('closes a revoked member before delivering another workspace event', async () => {
+  const socket = await connect(`${Date.now()}:~`);
+  const closed = new Promise<number>((resolve, reject) => {
+   const timer = setTimeout(() => reject(new Error('Revoked socket stayed open')), 10_000);
+   socket.once('close', code => { clearTimeout(timer); resolve(code) });
+  });
+  await db.membership.delete({ where: { userId_workspaceId: { userId, workspaceId } } });
+  await db.workspaceEvent.create({ data: { workspaceId, type: 'task.updated', entityId: 'private', payload: {} } });
+  expect(await closed).toBe(1008);
+ }, 15_000);
 });

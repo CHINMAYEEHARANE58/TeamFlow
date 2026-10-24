@@ -11,5 +11,5 @@ export function projectForUser(userId:string,projectId:string,allowed?:Role[]){r
 export function taskForUser(userId:string,taskId:string,allowed?:Role[]){return db.task.findFirst({where:{id:taskId,project:projectAccess(userId,allowed)},include:{project:true}})}
 export async function changeTaskStatus(userId:string,taskId:string,version:number,status:'TODO'|'IN_PROGRESS'|'IN_REVIEW'|'DONE'){
  const task=await taskForUser(userId,taskId,['OWNER','ADMIN','MANAGER','MEMBER']);if(!task)return {kind:'forbidden' as const};
- const result=await db.task.updateMany({where:{id:taskId,version},data:{status,version:{increment:1}}});return result.count?{kind:'updated' as const}:{kind:'conflict' as const};
+ const result=await db.task.updateMany({where:{id:taskId,version},data:{status,customStatusId:null,version:{increment:1}}});return result.count?{kind:'updated' as const}:{kind:'conflict' as const};
 }

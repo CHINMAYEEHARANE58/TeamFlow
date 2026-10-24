@@ -5,7 +5,7 @@ TeamFlow is a multi-workspace project management application built with Next.js 
 ## What works
 
 - Email/password registration, verification, login, password reset, revocable database sessions, logout, and optional Google OAuth.
-- Multiple workspaces, workspace switching, invitations, owner/admin/manager/member/guest permissions, project creation and archiving, project members, and administrative audit records.
+- Multiple workspaces, workspace switching, invitations, role changes and membership revocation, owner/admin/manager/member/guest permissions, project creation and archiving, project members, and administrative audit records.
 - Tasks and subtasks, assignment, due dates, priorities, labels, custom workflow statuses, dependencies, comments, private attachments, manager-controlled deletion, search, sorting, filtering, bulk status action, list, board, and calendar views.
 - Sprint planning, backlog assignment, story points, velocity, burndown, and a completion snapshot.
 - In-app notifications, email jobs with a retrying worker, notification preferences, durable workspace events, and a reconnecting WebSocket client backed by Redis. Local development can use SSE without the realtime workers.
@@ -17,7 +17,7 @@ TeamFlow is a multi-workspace project management application built with Next.js 
 1. Install Node.js 24 and Docker. Copy `.env.example` to `.env`.
 2. Run `docker compose up -d`.
 3. Run `npm ci`, `npx prisma generate`, and `npx prisma migrate deploy`.
-4. Optionally run `npm run db:seed` for an Acme Studio demo account (`demo@teamflow.local` / `teamflow-demo`). The seed is idempotent and intended only for local development.
+4. Optionally set a unique `DEMO_PASSWORD` of at least 12 characters and run `npm run db:seed` for an Acme Studio demo account (`demo@teamflow.local`). The seed is idempotent and refuses to run with `NODE_ENV=production`.
 5. Start the app with `npm run dev`. In another terminal, run `npm run worker` to deliver queued email notifications. To exercise the WebSocket path locally, set `NEXT_PUBLIC_REALTIME_WS_URL=ws://localhost:3001/realtime` before starting Next.js and run `npm run realtime:bridge` and `npm run realtime:server` in separate terminals.
 6. Open [http://127.0.0.1:3000](http://127.0.0.1:3000). Without SMTP, verification, reset, and invitation links appear as private files in `.data/outbox`. Without S3 configuration, attachments are stored in `.data/attachments`.
 
@@ -25,7 +25,7 @@ Do not run the seed in production. Local email and file adapters refuse to run i
 
 ## Checks
 
-Run `npm run lint`, `npm run typecheck`, `npm test`, `npm run test:e2e`, and `npm run build`. Integration tests run when `TEST_DATABASE_URL` points to a disposable PostgreSQL database. Playwright needs Chromium (`npx playwright install chromium`). The CI workflow provisions PostgreSQL, applies migrations, installs Chromium, and runs all checks.
+Run `npm run lint`, `npm run typecheck`, `npm test`, `npm test -- --coverage`, `npm run test:e2e`, and `npm run build`. Integration tests run when `TEST_DATABASE_URL` points to a disposable PostgreSQL database; set `TEST_REDIS_URL` to include the WebSocket tests. Playwright needs Chromium (`npx playwright install chromium`). The CI workflow provisions PostgreSQL, applies migrations, audits dependencies, installs Chromium, and runs the checks.
 
 ## Architecture
 
@@ -50,7 +50,7 @@ See [API.md](API.md) for routes, [DEPLOYMENT.md](DEPLOYMENT.md) for the deployme
 
 ## Current production limits
 
-The repository's lint, test, and build commands pass locally, and the Docker image builds and starts. The GitHub Actions workflow is configured but has not run remotely. External integrations need live validation with your own Google, SMTP, S3, Redis, and hosting credentials. Google OAuth is hidden until configured. Authentication uses application-owned session and account code rather than Auth.js; it needs independent review before sensitive production use. The Redis-backed WebSocket service should be load tested for your expected connection count. The dashboard shows a recent subset of tasks; the All tasks page and API paginate full collections. Burndown uses current task completion timestamps; it is not a historical event reconstruction. The platform administrator page offers operational visibility, while provisioning that role is done from a trusted terminal. An independent security review and backup restore exercise are recommended before accepting sensitive production data.
+The current production-readiness review is in [docs/production-readiness-review.md](docs/production-readiness-review.md). Authentication uses application-owned session and account code rather than Auth.js or another maintained auth framework; it needs independent review or replacement before sensitive production use. Google OAuth is hidden until configured and cannot yet link to an existing password account. Live SMTP, S3, Google, and hosting integrations require validation with real credentials. The Docker Compose configuration parses, but the Docker daemon was unavailable for a fresh image build in this review. The Redis-backed WebSocket service needs load testing. Dashboard totals are exact while search and task rows use the 100 most recent records, showing up to 20 at a time; the All tasks page and API paginate full collections. The board, calendar, and notification views have fixed limits, and reports still load complete tenant collections. Burndown uses current task completion timestamps rather than historical event reconstruction. The platform administrator page offers operational visibility, while provisioning that role is done from a trusted terminal. The configured GitHub Actions workflow has not been verified remotely for this revision. A backup restore exercise is still required before accepting real data.
 
 ## Screenshots
 

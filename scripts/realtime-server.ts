@@ -34,9 +34,10 @@ function send(socket: WebSocket, state: { cursor: string }, event: EventMessage)
  socket.send(JSON.stringify({ event: 'change', id: event.id, type: event.type, entityId: event.entityId }));
 }
 
-async function replay(socket: WebSocket, state: { workspaceId: string; cursor: string }) {
+async function replay(socket: WebSocket, state: { userId: string; workspaceId: string; sessionId: string; cursor: string }) {
  let count = 0;
  while (socket.readyState === WebSocket.OPEN && count < 1000) {
+  if (!await valid(state)) { socket.close(1008, 'Access revoked'); return }
   const parsed = parseEventCursor(state.cursor);
   if (!parsed) break;
   const events = await db.workspaceEvent.findMany({ where: { workspaceId: state.workspaceId, OR: [{ createdAt: { gt: parsed.time } }, { createdAt: parsed.time, id: { gt: parsed.id } }] }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }], take: 100 });
@@ -76,9 +77,12 @@ subscriber.on('message', (_channel, value) => {
  try {
   const event = JSON.parse(value) as EventMessage;
   if (!parseEventCursor(event.id)) return;
-  for (const [socket, state] of sockets) if (state.workspaceId === event.workspaceId) {
-   if (state.ready) send(socket, state, event); else state.pending.push(event);
-  }
+  void Promise.all([...sockets].filter(([, state]) => state.workspaceId === event.workspaceId).map(async ([socket, state]) => {
+   try {
+    if (!await valid(state)) { socket.close(1008, 'Access revoked'); return }
+    if (state.ready) send(socket, state, event); else state.pending.push(event);
+   } catch { socket.close(1011, 'Authorization failed') }
+  }));
  } catch (error) { console.error('Invalid realtime event', error) }
 });
 const interval = setInterval(() => { for (const [socket, state] of sockets) void valid(state).then(ok => { if (!ok) socket.close(1008, 'Access revoked') }).catch(() => socket.close(1011, 'Authorization failed')) }, 30_000);

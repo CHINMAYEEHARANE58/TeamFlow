@@ -6,17 +6,25 @@ export default function LiveRefresh() {
  const router = useRouter();
  useEffect(() => {
   const seen = new Set<string>();
+  let refreshPending = false;
+  const refreshWhenReady = () => {
+   if (document.querySelector('[role=dialog]')) { refreshPending = true; return; }
+   refreshPending = false;
+   router.refresh();
+  };
+  const observer = new MutationObserver(() => { if (refreshPending && !document.querySelector('[role=dialog]')) refreshWhenReady(); });
+  observer.observe(document.body, { childList: true, subtree: true });
   const changed = (id: string) => {
    if (seen.has(id)) return;
    seen.add(id);
    if (seen.size > 1000) seen.clear();
-   if (!document.querySelector('[role=dialog]')) router.refresh();
+   refreshWhenReady();
   };
   const address = process.env.NEXT_PUBLIC_REALTIME_WS_URL;
   if (!address) {
    const source = new EventSource(`/api/v1/events?after=${Date.now()}:~`);
    source.addEventListener('change', event => changed(event.lastEventId));
-   return () => source.close();
+   return () => { source.close(); observer.disconnect(); };
   }
   let cursor = `${Date.now()}:~`;
   let socket: WebSocket | undefined;
@@ -39,7 +47,7 @@ export default function LiveRefresh() {
    socket.onclose = () => { if (!closed) { timer = setTimeout(connect, delay); delay = Math.min(delay * 2, 30_000) } };
   };
   connect();
-  return () => { closed = true; if (timer) clearTimeout(timer); socket?.close() };
+  return () => { closed = true; if (timer) clearTimeout(timer); socket?.close(); observer.disconnect(); };
  }, [router]);
  return null;
 }
